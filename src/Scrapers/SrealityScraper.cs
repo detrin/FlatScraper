@@ -323,7 +323,7 @@ namespace FlatScraper.Scrapers
             // Updating data in database
             Visibility = false;
             chromeOptions = GetOptions();
-            driverCount = 2;
+            driverCount = 5;
             Console.WriteLine("updating offer links ...");
             SaveOfferLinks(chromeOptions, driverCount);
             
