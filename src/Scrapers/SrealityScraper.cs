@@ -23,6 +23,7 @@ namespace FlatScraper.Scrapers
         protected Dictionary<string, bool> propsDict = new Dictionary<string, bool>();
         private readonly IConfigurationRoot ConfigurationRoot;
         private readonly string DatabaseSecret;
+        private readonly int WorkersCount;
 
         public SrealityScraper(IConfigurationRoot configurationRoot)
         {
@@ -30,6 +31,8 @@ namespace FlatScraper.Scrapers
             var configDatabase = configurationRoot.GetSection("Database").Get<Dictionary<string, string>>();
             string useSecret = configDatabase["useSecret"];
             DatabaseSecret = configDatabase[useSecret];
+
+            WorkersCount = configurationRoot.GetSection("workersCount").Get<int>();
         }
 
 
@@ -181,10 +184,9 @@ namespace FlatScraper.Scrapers
             }
             else
             {
-                Console.WriteLine($"{flatOfferSaved.Link} {flatOffer.Link}");
-                
                 if (flatOfferSaved.Link == flatOffer.Link && !flatOffer.Equals(flatOfferSaved))
                 {
+                    Console.WriteLine($"updated {flatOfferSaved.Link}");
                     flatOfferSaved.AddState(flatOffer.State);          
                     db.UpsertRecord<FlatOffer>(CollectionName, flatOfferSaved.Link, flatOfferSaved);
                 }
@@ -194,9 +196,7 @@ namespace FlatScraper.Scrapers
         public Task UpdateOfferInfo(ChromeDriver chromeDriver)
         {
             return Task.Run(() =>
-            {
-                Console.WriteLine($"{DatabaseSecret}");
-                
+            {                
                 MongoCRUD db = new MongoCRUD(DatabaseSecret, "FlatScraper");
                 while (offerNum < offerLinks.Count)
                 {
@@ -313,9 +313,8 @@ namespace FlatScraper.Scrapers
             // Fetching data
             Visibility = false;
             ChromeOptions chromeOptions = GetOptions();
-            int driverCount = 5;
             Console.WriteLine("fetching offer links ...");
-            FetchOfferLinks(chromeOptions, driverCount);
+            FetchOfferLinks(chromeOptions, WorkersCount);
             Console.WriteLine($"Total links: {offerLinks.Count}");
             offerLinks = offerLinks.Distinct().ToList();
             Console.WriteLine($"Total reduced links: {offerLinks.Count}");
@@ -323,9 +322,8 @@ namespace FlatScraper.Scrapers
             // Updating data in database
             Visibility = false;
             chromeOptions = GetOptions();
-            driverCount = 5;
             Console.WriteLine("updating offer links ...");
-            SaveOfferLinks(chromeOptions, driverCount);
+            SaveOfferLinks(chromeOptions, WorkersCount);
             
             Console.WriteLine($"{DatabaseSecret}");
         }

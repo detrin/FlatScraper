@@ -59,7 +59,7 @@ namespace FlatScraper.Models
         {
             bool isEqual = obj is FlatOfferState;
             FlatOfferState objConverted = (FlatOfferState)obj;
-            isEqual = isEqual && objConverted.Created == Created;
+            // isEqual = isEqual && objConverted.Created == Created;
             isEqual = isEqual && Properties.Keys.Count == objConverted.Properties.Keys.Count &&
                 Properties.Keys.All(k => objConverted.Properties.ContainsKey(k) && object.Equals(objConverted.Properties[k], Properties[k]));
 
