@@ -78,8 +78,8 @@ namespace FlatScraper.Scrapers
             int pageNum = 1;
             while (itemsPresent)
             {
-                Url = $"https://www.sreality.cz/hledani/prodej/byty/praha?strana={pageNum}";
-                chromeDriver.Navigate().GoToUrl(Url);
+                string url = $"https://www.sreality.cz/hledani/prodej/byty/praha?strana={pageNum}";
+                chromeDriver.Navigate().GoToUrl(url);
                 var wait = new WebDriverWait(chromeDriver, new TimeSpan(0, 0, 30));
                 wait.Until(IsAnyOfElementsPresent(By.XPath(xpaths["numItemsButton"]), By.XPath(xpaths["endPageItem"])));
                 try
@@ -108,9 +108,9 @@ namespace FlatScraper.Scrapers
                 bool itemsPresent = true;
                 while (itemsPresent)
                 {
-                    Url = $"{BaseUrl}?strana={lastPageNum}";
+                    string url = $"{BaseUrl}?strana={lastPageNum}";
                     lastPageNum++;
-                    chromeDriver.Navigate().GoToUrl(Url);
+                    chromeDriver.Navigate().GoToUrl(url);
                     var wait = new WebDriverWait(chromeDriver, new TimeSpan(0, 0, 30));
                     wait.Until(IsAnyOfElementsPresent(By.XPath(xpaths["numItemsButton"]), By.XPath(xpaths["endPageItem"])));
                     //var itemsPresent = _isElementPresent(chromeDriver, xpaths["numItemsButton"]);
@@ -200,10 +200,10 @@ namespace FlatScraper.Scrapers
                 MongoCRUD db = new MongoCRUD(DatabaseSecret, "FlatScraper");
                 while (offerNum < offerLinks.Count)
                 {
-                    Url = offerLinks[offerNum];
+                    string url = offerLinks[offerNum];
                     offerNum++;
                     Console.WriteLine($"{offerNum}/{offerLinks.Count}");
-                    chromeDriver.Navigate().GoToUrl(Url);
+                    chromeDriver.Navigate().GoToUrl(url);
                     WaitTillLoaded(chromeDriver, "offerProps", 30);
 
                     Dictionary<string, string> stateProps = new Dictionary<string, string>();
@@ -228,7 +228,7 @@ namespace FlatScraper.Scrapers
 
                     FlatOffer newFlatOffer = new FlatOffer
                     {
-                        Link = Url,
+                        Link = url,
                         State = new FlatOfferState
                         {
                             LastChecked = DateTime.UtcNow,

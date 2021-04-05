@@ -19,7 +19,7 @@ namespace FlatScraper
         {
             var config = new ConfigurationBuilder()
                 .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
-                .AddJsonFile("appsettingsTesting.json").Build();
+                .AddJsonFile("appsettings.json").Build();
 
             SrealityScraper srealityScraper = new SrealityScraper(config);
             srealityScraper.RunFlatsBuy();    
