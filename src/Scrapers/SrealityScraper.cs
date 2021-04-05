@@ -33,6 +33,14 @@ namespace FlatScraper.Scrapers
             DatabaseSecret = configDatabase[useSecret];
 
             WorkersCount = configurationRoot.GetSection("workersCount").Get<int>();
+
+            xpaths.Add("isLoaded", "/html/body/div[2]/div[1]/div[2]/div[2]/div[5]/preact/div/div/p[2]");
+            xpaths.Add("numItemsButton", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[1]");
+            xpaths.Add("itemsOf60", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[2]/ul/li[2]/button");
+            xpaths.Add("lastItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[3]/div/div[61]/a");
+            xpaths.Add("endPageItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/div/div[1]/img");
+            // Extracting info from site
+            xpaths.Add("offerProps", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[6]");
         }
 
 
@@ -187,7 +195,7 @@ namespace FlatScraper.Scrapers
                 if (flatOfferSaved.Link == flatOffer.Link && !flatOffer.Equals(flatOfferSaved))
                 {
                     Console.WriteLine($"updated {flatOfferSaved.Link}");
-                    flatOfferSaved.AddState(flatOffer.State);          
+                    flatOfferSaved.AddState(flatOffer.State);
                     db.UpsertRecord<FlatOffer>(CollectionName, flatOfferSaved.Link, flatOfferSaved);
                 }
             }
@@ -196,48 +204,59 @@ namespace FlatScraper.Scrapers
         public Task UpdateOfferInfo(ChromeDriver chromeDriver)
         {
             return Task.Run(() =>
-            {                
+            {
                 MongoCRUD db = new MongoCRUD(DatabaseSecret, "FlatScraper");
                 while (offerNum < offerLinks.Count)
                 {
-                    string url = offerLinks[offerNum];
-                    offerNum++;
-                    Console.WriteLine($"{offerNum}/{offerLinks.Count}");
-                    chromeDriver.Navigate().GoToUrl(url);
-                    WaitTillLoaded(chromeDriver, "offerProps", 30);
-
-                    Dictionary<string, string> stateProps = new Dictionary<string, string>();
-                    IWebElement offerProps = chromeDriver.FindElement(By.XPath(xpaths["offerProps"]));
-                    IReadOnlyList<IWebElement> propComposites = offerProps.FindElements(By.TagName("li"));
-                    foreach (IWebElement prop in propComposites)
+                    try
                     {
-                        IWebElement propNameElement = prop.FindElement(By.TagName("label"));
-                        string propName = propNameElement.Text.Split(':')[0];
-                        IWebElement propValueElement = prop.FindElement(By.TagName("strong"));
-                        string propValue = propValueElement.Text;
-                        if (propValue != "")
+                        string url = offerLinks[offerNum];
+                        offerNum++;
+                        Console.WriteLine($"{offerNum}/{offerLinks.Count}");
+                        chromeDriver.Navigate().GoToUrl(url);
+                        WaitTillLoaded(chromeDriver, "offerProps", 30);
+
+                        Dictionary<string, string> stateProps = new Dictionary<string, string>();
+                        IWebElement offerProps = chromeDriver.FindElement(By.XPath(xpaths["offerProps"]));
+                        IReadOnlyList<IWebElement> propComposites = offerProps.FindElements(By.TagName("li"));
+                        foreach (IWebElement prop in propComposites)
                         {
-                            stateProps[propName] = propValue;
-                        } else {
-                            IWebElement propIcon = prop.FindElements(By.TagName("span"))[1];
-                            string iconClass = propIcon.GetAttribute("class");
-                            stateProps[propName] = iconClass;
+                            IWebElement propNameElement = prop.FindElement(By.TagName("label"));
+                            string propName = propNameElement.Text.Split(':')[0];
+                            IWebElement propValueElement = prop.FindElement(By.TagName("strong"));
+                            string propValue = propValueElement.Text;
+                            if (propValue != "")
+                            {
+                                stateProps[propName] = propValue;
+                            }
+                            else
+                            {
+                                IWebElement propIcon = prop.FindElements(By.TagName("span"))[1];
+                                string iconClass = propIcon.GetAttribute("class");
+                                stateProps[propName] = iconClass;
+                            }
+
                         }
-                        
+
+                        FlatOffer newFlatOffer = new FlatOffer
+                        {
+                            Link = url,
+                            State = new FlatOfferState
+                            {
+                                LastChecked = DateTime.UtcNow,
+                                Created = DateTime.UtcNow,
+                                Properties = stateProps
+                            },
+                        };
+
+                        UpdateSavedOffer(db, newFlatOffer);
+
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
                     }
 
-                    FlatOffer newFlatOffer = new FlatOffer
-                    {
-                        Link = url,
-                        State = new FlatOfferState
-                        {
-                            LastChecked = DateTime.UtcNow,
-                            Created = DateTime.UtcNow,
-                            Properties = stateProps
-                        },
-                    };
-
-                    UpdateSavedOffer(db, newFlatOffer);
                 }
             });
         }
@@ -264,18 +283,28 @@ namespace FlatScraper.Scrapers
             }
         }
 
+        public void CheckForDelistedOffers()
+        {
+            MongoCRUD db = new MongoCRUD(DatabaseSecret, "FlatScraper");
+            List<FlatOffer> flatOffers = db.LoadRecords<FlatOffer>(CollectionName);
+            foreach (FlatOffer flatOffer in flatOffers)
+            {
+                if (flatOffer.State.Delisted == null && !offerLinks.Contains(flatOffer.Link))
+                {
+                    // Console.WriteLine($"{offerLinks.Contains(flatOffer.Link)}");
+                    var timeStamp = DateTime.UtcNow;
+                    flatOffer.State.Delisted = timeStamp;
+                    flatOffer.State.LastChecked = timeStamp;
+                    db.UpsertRecord<FlatOffer>(CollectionName, flatOffer.Link, flatOffer);
+                }
+            }
+        }
+
         public void RunFlatsBuy()
         {
             // Fetching offers
             BaseUrl = "https://www.sreality.cz/hledani/prodej/byty/praha";
             CollectionName = "SrealityFlatBuy";
-            xpaths.Add("isLoaded", "/html/body/div[2]/div[1]/div[2]/div[2]/div[5]/preact/div/div/p[2]");
-            xpaths.Add("numItemsButton", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[1]");
-            xpaths.Add("itemsOf60", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[2]/ul/li[2]/button");
-            xpaths.Add("lastItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[3]/div/div[61]/a");
-            xpaths.Add("endPageItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/div/div[1]/img");
-            // Extracting info from site
-            xpaths.Add("offerProps", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[6]");
 
             // Fetching data
             Visibility = false;
@@ -286,14 +315,17 @@ namespace FlatScraper.Scrapers
             Console.WriteLine($"Total links: {offerLinks.Count}");
             offerLinks = offerLinks.Distinct().ToList();
             Console.WriteLine($"Total reduced links: {offerLinks.Count}");
-            
+
+            // Check for delisted offers
+            CheckForDelistedOffers();
+
             // Updating data in database
             Visibility = false;
             chromeOptions = GetOptions();
             driverCount = 2;
             Console.WriteLine("updating offer links ...");
             SaveOfferLinks(chromeOptions, driverCount);
-            
+
             Console.WriteLine($"{DatabaseSecret}");
         }
 
@@ -302,13 +334,6 @@ namespace FlatScraper.Scrapers
             // Fetching offers
             BaseUrl = "https://www.sreality.cz/hledani/pronajem/byty/praha";
             CollectionName = "SrealityFlatRent";
-            xpaths.Add("isLoaded", "/html/body/div[2]/div[1]/div[2]/div[2]/div[5]/preact/div/div/p[2]");
-            xpaths.Add("numItemsButton", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[1]");
-            xpaths.Add("itemsOf60", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/span[2]/span[2]/span/span[2]/ul/li[2]/button");
-            xpaths.Add("lastItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[3]/div/div[61]/a");
-            xpaths.Add("endPageItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/div/div[1]/img");
-            // Extracting info from site
-            xpaths.Add("offerProps", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[6]");
 
             // Fetching data
             Visibility = false;
@@ -318,13 +343,16 @@ namespace FlatScraper.Scrapers
             Console.WriteLine($"Total links: {offerLinks.Count}");
             offerLinks = offerLinks.Distinct().ToList();
             Console.WriteLine($"Total reduced links: {offerLinks.Count}");
-            
+
+            // Check for delisted offers
+            CheckForDelistedOffers();
+
             // Updating data in database
             Visibility = false;
             chromeOptions = GetOptions();
             Console.WriteLine("updating offer links ...");
             SaveOfferLinks(chromeOptions, WorkersCount);
-            
+
             Console.WriteLine($"{DatabaseSecret}");
         }
     }
