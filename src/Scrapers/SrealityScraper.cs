@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using FlatScraper.Models;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 
 namespace FlatScraper.Scrapers
 {
@@ -24,6 +25,7 @@ namespace FlatScraper.Scrapers
         private readonly IConfigurationRoot ConfigurationRoot;
         private readonly string DatabaseSecret;
         private readonly int WorkersCount;
+        private Serilog.Core.Logger log;
 
         public SrealityScraper(IConfigurationRoot configurationRoot)
         {
@@ -40,7 +42,14 @@ namespace FlatScraper.Scrapers
             xpaths.Add("lastItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[3]/div/div[61]/a");
             xpaths.Add("endPageItem", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[2]/div/div[1]/img");
             // Extracting info from site
+            xpaths.Add("titleProp", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[4]/h1/span/span[1]");
+            xpaths.Add("address", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[4]/h1/span/span[2]/span");
+            xpaths.Add("priceShort", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[4]/span/span[2]");
             xpaths.Add("offerProps", "/html/body/div[2]/div[1]/div[2]/div[2]/div[4]/div/div/div/div/div[6]");
+
+            log = new LoggerConfiguration()
+                .WriteTo.File("logExceptions.txt")
+                .CreateLogger();
         }
 
 
@@ -117,9 +126,10 @@ namespace FlatScraper.Scrapers
             return Task.Run(() =>
             {
                 bool itemsPresent = true;
+                string url = "";
                 while (itemsPresent)
                 {
-                    string url = $"{BaseUrl}?strana={lastPageNum}";
+                    url = $"{BaseUrl}?strana={lastPageNum}";
                     lastPageNum++;
                     chromeDriver.Navigate().GoToUrl(url);
                     var wait = new WebDriverWait(chromeDriver, new TimeSpan(0, 0, 30));
@@ -208,15 +218,25 @@ namespace FlatScraper.Scrapers
                 MongoCRUD db = new MongoCRUD(DatabaseSecret, "FlatScraper");
                 while (offerNum < offerLinks.Count)
                 {
+                    string url = "";
                     try
                     {
-                        string url = offerLinks[offerNum];
+                        url = offerLinks[offerNum];
                         offerNum++;
                         Console.WriteLine($"{offerNum}/{offerLinks.Count}");
                         chromeDriver.Navigate().GoToUrl(url);
                         WaitTillLoaded(chromeDriver, "offerProps", 30);
 
                         Dictionary<string, string> stateProps = new Dictionary<string, string>();
+                        // title properties
+                        string titleProp = chromeDriver.FindElement(By.XPath(xpaths["titleProp"])).Text;
+                        stateProps["titleProp"] = titleProp;
+                        string address = chromeDriver.FindElement(By.XPath(xpaths["address"])).Text;
+                        stateProps["address"] = address;
+                        // string priceShort = chromeDriver.FindElement(By.XPath(xpaths["priceShort"])).Text;
+                        // stateProps["priceShort"] = priceShort;
+
+                        // body properties
                         IWebElement offerProps = chromeDriver.FindElement(By.XPath(xpaths["offerProps"]));
                         IReadOnlyList<IWebElement> propComposites = offerProps.FindElements(By.TagName("li"));
                         foreach (IWebElement prop in propComposites)
@@ -254,7 +274,8 @@ namespace FlatScraper.Scrapers
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine(e);
+                        log.Information(url);
+                        log.Information(e.ToString());
                     }
 
                 }

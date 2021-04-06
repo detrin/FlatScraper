@@ -36,3 +36,4 @@ msbuild.wrn
 # Project
 appsettings.json
 appsettingsTesting.json
+logExceptions.txt
